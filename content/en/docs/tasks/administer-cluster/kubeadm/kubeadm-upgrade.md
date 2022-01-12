@@ -325,3 +325,4 @@ and post-upgrade manifest file for a certain component, a backup file for it wil
 
 - Fetches the kubeadm `ClusterConfiguration` from the cluster.
 - Upgrades the kubelet configuration for this node.
+----------------------
