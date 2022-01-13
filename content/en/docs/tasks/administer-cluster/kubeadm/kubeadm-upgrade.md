@@ -326,3 +326,11 @@ and post-upgrade manifest file for a certain component, a backup file for it wil
 - Fetches the kubeadm `ClusterConfiguration` from the cluster.
 - Upgrades the kubelet configuration for this node.
 ----------------------
+
+```shell
+$ kubectl create clusterrole deployment-clusterrole --verb=create --resource=deployments,statefulsets,daemonsets
+$ kubectl create namespace app-team1
+$ kubectl -n app-team1 create serviceaccoun t cicd-token
+$ kubectl -n app-team1 create rolebinding cicd-token-binding --clusterrole=deployment-clusterrole --serviceaccount=app-team1:cicd-token
+$ kubectl -n app-team1 describe rolebindings.rbac.authorization.k8s.io cicd-token-binding
+```
