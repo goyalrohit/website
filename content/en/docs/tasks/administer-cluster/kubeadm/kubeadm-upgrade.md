@@ -323,6 +323,11 @@ and post-upgrade manifest file for a certain component, a backup file for it wil
 
 `kubeadm upgrade node` does the following on worker nodes:
 
+```shell
+$ kubectl cordon ek8s-node-1 # Mark the node as unschedulable through the cordon subcommand
+$ kubectl drain ek8s-node-1 --delete-local-data --ignore-daemonsets --force # Safely eject all pods of a node
+```
+
 - Fetches the kubeadm `ClusterConfiguration` from the cluster.
 - Upgrades the kubelet configuration for this node.
 ----------------------
@@ -330,7 +335,7 @@ and post-upgrade manifest file for a certain component, a backup file for it wil
 ```shell
 $ kubectl create clusterrole deployment-clusterrole --verb=create --resource=deployments,statefulsets,daemonsets
 $ kubectl create namespace app-team1
-$ kubectl -n app-team1 create serviceaccoun t cicd-token
+$ kubectl -n app-team1 create serviceaccount cicd-token
 $ kubectl -n app-team1 create rolebinding cicd-token-binding --clusterrole=deployment-clusterrole --serviceaccount=app-team1:cicd-token
 $ kubectl -n app-team1 describe rolebindings.rbac.authorization.k8s.io cicd-token-binding
 ```
