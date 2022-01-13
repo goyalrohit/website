@@ -37,11 +37,8 @@ The upgrade workflow at high level is the following:
 
 ### Additional information
 
-- The instructions below outline when to drain each node during the upgrade process.
-If you are performing a **minor** version upgrade for any kubelet, you **must**
-first drain the node (or nodes) that you are upgrading. In the case of control plane nodes,
-they could be running CoreDNS Pods or other critical workloads. For more information see
-[Draining nodes](/docs/tasks/administer-cluster/safely-drain-node/).
+- [Draining nodes](/docs/tasks/administer-cluster/safely-drain-node/) before kubelet MINOR version
+  upgrades is required. In the case of control plane nodes, they could be running CoreDNS Pods or other critical workloads.
 - All containers are restarted after upgrade, because the container spec hash value is changed.
 
 <!-- steps -->
@@ -197,6 +194,12 @@ Also calling `kubeadm upgrade plan` and upgrading the CNI provider plugin is no 
     # replace <node-to-drain> with the name of your node
     kubectl uncordon <node-to-drain>
     ```
+  ```shell
+  sudo -i
+systemctl status kubelet
+systemctl start kubelet
+systemctl enable kubelet
+```
 
 ## Upgrade worker nodes
 
@@ -206,6 +209,11 @@ without compromising the minimum required capacity for running your workloads.
 ### Upgrade kubeadm
 
 -  Upgrade kubeadm:
+
+```shell
+kubectl top -l name=cpu-user -A
+echo 'pod name' >> /opt/KUT00401/KUT00401.txt
+```
 
 {{< tabs name="k8s_install_kubeadm_worker_nodes" >}}
 {{% tab name="Ubuntu, Debian or HypriotOS" %}}
@@ -219,6 +227,45 @@ without compromising the minimum required capacity for running your workloads.
     yum install -y kubeadm-{{< skew currentVersion >}}.x-0 --disableexcludes=kubernetes
 {{% /tab %}}
 {{< /tabs >}}
+
+```shell
+apiVersion: v1
+kind: Pod
+metadata:
+  name: legacy-app
+spec:
+  containers:
+  - name: count
+    image: busybox
+    args:
+    - /bin/sh
+    - -c
+    - >
+      i=0;
+      while true;
+      do
+        echo "$i: $(date)" >> /var/log/big-corp-app.log;
+        sleep 1;
+      done
+    volumeMounts:
+    - name: logs
+      mountPath: /var/log
+  - name: busybox
+    image: busybox
+    args: [/bin/sh, -c, 'tail -n+1 -f /var/log/legacy-app.log']
+    volumeMounts:
+    - name: logs
+      mountPath: /var/log
+  volumes:
+  - name: logs
+emptyDir: {}	
+
+
+$ kubectl config use-context k8s
+$ kubectl get po legacy-app -o yaml > 15.yaml # 
+$ kubectl delete -f 15.yaml
+$ kubectl apply -f 15.yaml
+```
 
 ### Call "kubeadm upgrade"
 
@@ -236,6 +283,46 @@ without compromising the minimum required capacity for running your workloads.
     # replace <node-to-drain> with the name of your node you are draining
     kubectl drain <node-to-drain> --ignore-daemonsets
     ```
+```shell
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pv-volume
+spec:
+  storageClassName: csi-hostpath-sc
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Mi
+ 
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-server
+spec:
+  volumes:
+    - name: task-pv-storage
+      persistentVolumeClaim:
+        claimName: pv-volume
+  containers:
+    - name: web-server
+      image: nginx
+      ports:
+        - containerPort: 80
+          name: "http-server"
+      volumeMounts:
+        - mountPath: "/usr/share/nginx/html"
+          name: task-pv-storage
+  nodeSelector:
+    disk: ssd
+ 
+$ kubectl apply -f pv-volume-pvc.yaml 
+$ kubectl get pvc # verify
+$ kubectl edit pvc pv-volume --record   # modify pvc 10Mi --> 70Mi 
+```
+
 
 ### Upgrade kubelet and kubectl
 
@@ -255,12 +342,41 @@ without compromising the minimum required capacity for running your workloads.
 {{< /tabs >}}
 <br />
 
+```shell
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: app-config
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+path: "/srv/app-config
+```
 -  Restart the kubelet:
 
     ```shell
     sudo systemctl daemon-reload
     sudo systemctl restart kubelet
     ```
+```shell
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kucc1
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+  - name: redis
+    image: redis
+  - name: memcached
+    image: memcached
+  - name: consul
+    image: consul
+```
 
 ### Uncordon the node
 
@@ -278,9 +394,24 @@ from anywhere kubectl can access the cluster:
 
 ```shell
 kubectl get nodes
+kubectl describe node | grep -i taints|grep -v -i noschedule > 
 ```
 
 The `STATUS` column should show `Ready` for all your nodes, and the version number should be updated.
+
+```shell
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-kusc00401
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    imagePullPolicy: IfNotPresent
+  nodeSelector:
+    disk: ssd
+```
 
 ## Recovering from a failure state
 
@@ -293,18 +424,73 @@ During upgrade kubeadm writes the following backup folders under `/etc/kubernete
 - `kubeadm-backup-etcd-<date>-<time>`
 - `kubeadm-backup-manifests-<date>-<time>`
 
+```shell
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ping
+  namespace: ing-internal
+  annotations:
+    nginx.ingerss.kubernetes.io/rewrite-target:/
+spec:
+  rules:
+  - http:
+    paths:
+    - path: /hi
+      pathType: Prefix
+      backend:
+        service:
+        name: hi
+        port:
+          number: 5678
+		  
+$ curl -kL <INTERNAL_IP>/hi
+```
+
 `kubeadm-backup-etcd` contains a backup of the local etcd member data for this control plane Node.
 In case of an etcd upgrade failure and if the automatic rollback does not work, the contents of this folder
 can be manually restored in `/var/lib/etcd`. In case external etcd is used this backup folder will be empty.
+
+```shell
+kubectl expose deployment front-end --name=front-end-svc --port=80 --targetport=80 --type=NodePort
+```
 
 `kubeadm-backup-manifests` contains a backup of the static Pod manifest files for this control plane Node.
 In case of a upgrade failure and if the automatic rollback does not work, the contents of this folder can be
 manually restored in `/etc/kubernetes/manifests`. If for some reason there is no difference between a pre-upgrade
 and post-upgrade manifest file for a certain component, a backup file for it will not be written.
 
+```shell
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: all-port-from-namespace
+  namespace: internal
+spec:
+  podSelector:
+    matchLabels: {}
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: namespacecorp-net
+    - podSelector: {}
+    ports:
+    - port: 9000
+```
+
 ## How it works
 
 `kubeadm upgrade apply` does the following:
+
+```shell
+ETCDCTL_API=3  # set api version to 3
+$ etcdctl --endpoints 127.0.0.1:2379 --cacert=/opt/KUIN00601/ca.crt --cert=/opt/KUIN00601/etcd-client.crt --key=/opt/KUIN00601/etcd-client.key snapshot save /srv/data/etcd-snapshot.db
+
+ETCDCTL_API=3  # set api version to 3
+$ etcdctl --endpoints 127.0.0.1:2379 --cacert=/opt/KUIN00601/ca.crt --cert=/opt/KUIN00601/etcd-client.crt --key=/opt/KUIN00601/etcd-client.key snapshot restore /srv/data/etcd-snapshot.db
+```
+
 
 - Checks that your cluster is in an upgradeable state:
   - The API server is reachable
@@ -319,6 +505,21 @@ and post-upgrade manifest file for a certain component, a backup file for it wil
 
 `kubeadm upgrade node` does the following on additional control plane nodes:
 
+```shell
+kubectl cordon k8s-master
+kubectl drain k8s-master --delete-local-data --ignore-daemonsets --force
+sudo -i
+apt-get install kubeadm=1.19.0-00 kubelet=1.19.0-00 kubectl=1.19.0-00 --disableexcludes=kubernetes
+--kubeadm upgrade plan
+kubeadm upgrade apply 1.19.0 --etcd-upgrade=false
+kubelet version
+systemctl status kubelet
+systemctl daemon-reload
+systemctl restart kubelet
+exit
+kubectl uncordon k8s-master
+```
+
 - Fetches the kubeadm `ClusterConfiguration` from the cluster.
 - Optionally backups the kube-apiserver certificate.
 - Upgrades the static Pod manifests for the control plane components.
@@ -326,5 +527,18 @@ and post-upgrade manifest file for a certain component, a backup file for it wil
 
 `kubeadm upgrade node` does the following on worker nodes:
 
+```shell
+$ kubectl cordon ek8s-node-1 # Mark the node as unschedulable through the cordon subcommand
+$ kubectl drain ek8s-node-1 --delete-local-data --ignore-daemonsets --force # Safely eject all pods of a node
+```
+
 - Fetches the kubeadm `ClusterConfiguration` from the cluster.
 - Upgrades the kubelet configuration for this node.
+----------------------
+
+```shell
+$ kubectl create clusterrole deployment-clusterrole --verb=create --resource=deployments,statefulsets,daemonsets
+$ kubectl create serviceaccount cicd-token -n app-team1
+$ kubectl create rolebinding cicd-token-binding --clusterrole=deployment-clusterrole --serviceaccount=app-team1:cicd-token -n app-team1 
+$ kubectl describe rolebindings.rbac.authorization.k8s.io cicd-token-binding -n app-team1 
+```
