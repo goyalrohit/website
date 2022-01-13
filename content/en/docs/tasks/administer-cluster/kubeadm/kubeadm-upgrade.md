@@ -334,8 +334,7 @@ $ kubectl drain ek8s-node-1 --delete-local-data --ignore-daemonsets --force # Sa
 
 ```shell
 $ kubectl create clusterrole deployment-clusterrole --verb=create --resource=deployments,statefulsets,daemonsets
-$ kubectl create namespace app-team1
-$ kubectl -n app-team1 create serviceaccount cicd-token
-$ kubectl -n app-team1 create rolebinding cicd-token-binding --clusterrole=deployment-clusterrole --serviceaccount=app-team1:cicd-token
-$ kubectl -n app-team1 describe rolebindings.rbac.authorization.k8s.io cicd-token-binding
+$ kubectl create serviceaccount cicd-token -n app-team1
+$ kubectl create rolebinding cicd-token-binding --clusterrole=deployment-clusterrole --serviceaccount=app-team1:cicd-token -n app-team1 
+$ kubectl describe rolebindings.rbac.authorization.k8s.io cicd-token-binding -n app-team1 
 ```
