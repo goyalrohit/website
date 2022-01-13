@@ -30,3 +30,4 @@ To install kubeadm, see the [installation guide](/docs/setup/production-environm
 * [kubeadm kubeconfig](/docs/reference/setup-tools/kubeadm/kubeadm-kubeconfig) to manage kubeconfig files
 * [kubeadm version](/docs/reference/setup-tools/kubeadm/kubeadm-version) to print the kubeadm version
 * [kubeadm alpha](/docs/reference/setup-tools/kubeadm/kubeadm-alpha) to preview a set of features made available for gathering feedback from the community
+* 
